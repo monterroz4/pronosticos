@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Modelo de Pronóstico</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <h1>Modelo de Pronóstico - Promedio Móvil</h1>
+
+        <form action="{{ url_for('modelo') }}" method="POST" enctype="multipart/form-data">
+            <div>
+                <input type="file" name="archivo" accept=".csv" required>
+                <input type="number" name="N" placeholder="Ingrese el valor de N" min="1" value="3">
+            </div>
+            <button type="submit">Ejecutar pronóstico</button>
+        </form>
+
+        {% if resultados %}
+            {% for producto, datos in resultados.items() %}
+
+                <h2>{{ producto }}</h2>
+
+                <p>MAPE: {{ datos.MAPE }} &nbsp;|&nbsp; MSE: {{ datos.MSE }} &nbsp;|&nbsp; RMSE: {{ datos.RMSE }}</p>
+                <p>Pronóstico próximo periodo: {{ datos.proximo }}</p>
+
+                <table>
+                    <tr>
+                        <th>Periodo</th>
+                        <th>Ventas</th>
+                        <th>Pronóstico</th>
+                        <th>Error</th>
+                        <th>Error Abs</th>
+                        <th>APE</th>
+                        <th>Error²</th>
+                    </tr>
+                    {% for fila in datos.tabla %}
+                    <tr>
+                        <td>{{ fila.periodo }}</td>
+                        <td>{{ fila.ventas }}</td>
+                        <td>{{ fila.pronostico }}</td>
+                        <td>{{ fila.error }}</td>
+                        <td>{{ fila.error_abs }}</td>
+                        <td>{{ fila.ape }}</td>
+                        <td>{{ fila.error_cuadrado }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+
+            {% endfor %}
+        {% endif %}
+
+    </div>
+</body>
+</html>

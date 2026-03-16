@@ -1,27 +1,58 @@
+from flask import Flask, render_template, request
 import pandas as pd
+import os
 
-datos=pd.read_csv ("venta_historicas.csv")
+app = Flask(__name__)
 
-# funcion para ejecutar pronostico
+@app.route('/')
+def home():
+    return render_template("pronostico.html")
 
-def pronosticar(historia,N):
-  datos["Pronostico"]=datos["ventas"].rolling(window=N).mean().shift(1)
-  datos["error"]=datos["Pronostico"] - datos["ventas"]
-  datos["error_abs"]=datos["error"].abs()
-  datos["ape"]=datos["error_abs"]/datos["ventas"]
-  datos["ape'"]=datos["error_abs"]/datos["Pronostico"]
-  datos["error_cuadrado"]=datos["error"]**2
+@app.route('/pronostico', methods=['GET', 'POST'])
+def modelo():
 
-  #medidas de error
-  MAPE=datos["ape"].mean()
-  MAPE_prima=datos["ape'"].mean()
-  MSE=datos["error_cuadrado"].mean()
-  RMSE=MSE**0,5
+    if request.method == "POST":
+        archivo = request.files.get('archivo')
+        N = int(request.form.get('N'))
+
+        datos = pd.read_csv(archivo)
+        productos = datos.columns[1:]  # todas las columnas menos 'periodo'
+
+        resultados = {}
+
+        for producto in productos:
+            serie = datos[["periodo", producto]].copy()
+            serie.columns = ["periodo", "ventas"]
+
+            serie["pronostico"] = serie["ventas"].rolling(window=N).mean().shift(1)
+            serie["error"] = serie["pronostico"] - serie["ventas"]
+            serie["error_abs"] = serie["error"].abs()
+            serie["ape"] = serie["error_abs"] / serie["ventas"]
+            serie["error_cuadrado"] = serie["error"] ** 2
+
+            MAPE = round(serie["ape"].mean(), 4)
+            MSE = round(serie["error_cuadrado"].mean(), 4)
+            RMSE = round(MSE ** 0.5, 4)
+
+            # pronostico siguiente periodo
+            ultimo = serie["ventas"].tail(N).mean()
+            proximo = round(ultimo, 2)
+
+            # tabla como lista de diccionarios para el HTML
+            tabla = serie.round(2).fillna("").to_dict(orient="records")
+
+            resultados[producto] = {
+                "tabla": tabla,
+                "MAPE": MAPE,
+                "MSE": MSE,
+                "RMSE": RMSE,
+                "proximo": proximo
+            }
+
+        return render_template("pronostico.html", resultados=resultados, N=N)
+
+    return render_template("pronostico.html")
 
 
-  return datos,MAPE,MAPE_prima,MSE,RMSE
-
-print(pronosticar(datos,3))
-
-
-
+if __name__ == "__main__":
+    app.run(debug=True)
