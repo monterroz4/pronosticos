@@ -3,52 +3,160 @@
 <head>
     <title>Modelo de Pronóstico</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
     <div class="container">
-        <h1>Modelo de Pronóstico - Promedio Móvil</h1>
+        <h1>Modelo de Pronóstico</h1>
 
         <form action="{{ url_for('modelo') }}" method="POST" enctype="multipart/form-data">
-            <div>
+
+            <div class="form-group">
+                <label>Archivo CSV:</label>
                 <input type="file" name="archivo" accept=".csv" required>
-                <input type="number" name="N" placeholder="Ingrese el valor de N" min="1" value="3">
             </div>
+
+            <div class="form-group">
+                <label>Método de pronóstico:</label>
+                <select name="metodo">
+                    <option value="PM">Promedio Móvil</option>
+                    <option value="SES">Suavización Exponencial Simple</option>
+                    <option value="Prophet">Prophet (Meta)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Valor de N (solo para Promedio Móvil):</label>
+                <input type="number" name="N" min="1" value="3">
+            </div>
+
+            <div class="form-group">
+                <label>Periodos futuros a proyectar:</label>
+                <input type="number" name="periodos_futuros" min="1" value="3">
+            </div>
+
             <button type="submit">Ejecutar pronóstico</button>
+
         </form>
 
         {% if resultados %}
-            {% for producto, datos in resultados.items() %}
 
-                <h2>{{ producto }}</h2>
-
-                <p>MAPE: {{ datos.MAPE }} &nbsp;|&nbsp; MSE: {{ datos.MSE }} &nbsp;|&nbsp; RMSE: {{ datos.RMSE }}</p>
-                <p>Pronóstico próximo periodo: {{ datos.proximo }}</p>
-
-                <table>
-                    <tr>
-                        <th>Periodo</th>
-                        <th>Ventas</th>
-                        <th>Pronóstico</th>
-                        <th>Error</th>
-                        <th>Error Abs</th>
-                        <th>APE</th>
-                        <th>Error²</th>
-                    </tr>
-                    {% for fila in datos.tabla %}
-                    <tr>
-                        <td>{{ fila.periodo }}</td>
-                        <td>{{ fila.ventas }}</td>
-                        <td>{{ fila.pronostico }}</td>
-                        <td>{{ fila.error }}</td>
-                        <td>{{ fila.error_abs }}</td>
-                        <td>{{ fila.ape }}</td>
-                        <td>{{ fila.error_cuadrado }}</td>
-                    </tr>
-                    {% endfor %}
-                </table>
-
+        <h2>Tabla resumen comparativa de métodos</h2>
+        <table>
+            <tr>
+                <th>Producto</th>
+                <th>Método</th>
+                <th>MAPE</th>
+                <th>MSE</th>
+                <th>RMSE</th>
+            </tr>
+            {% for producto, metodos in resumen.items() %}
+                {% for nombre_metodo, errores in metodos.items() %}
+                <tr>
+                    <td>{{ producto }}</td>
+                    <td>{{ nombre_metodo }}</td>
+                    <td>{{ errores.MAPE }}</td>
+                    <td>{{ errores.MSE }}</td>
+                    <td>{{ errores.RMSE }}</td>
+                </tr>
+                {% endfor %}
             {% endfor %}
+        </table>
+
+        <h2>Resultados por producto — Método seleccionado: {{ metodo }}</h2>
+
+        {% for producto, datos in resultados.items() %}
+
+            <h3>{{ producto }}</h3>
+
+            <table>
+                <tr>
+                    <th>Periodo</th>
+                    <th>Ventas reales</th>
+                    <th>Pronóstico</th>
+                </tr>
+                {% for fila in datos.tabla %}
+                <tr>
+                    <td>{{ fila.periodo }}</td>
+                    <td>{{ fila.ventas }}</td>
+                    <td>{{ fila.pronostico }}</td>
+                </tr>
+                {% endfor %}
+                {% for i in range(datos.labels_futuros | length) %}
+                <tr class="fila-futura">
+                    <td>{{ datos.labels_futuros[i] }}</td>
+                    <td>—</td>
+                    <td>{{ datos.proyeccion[i] }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+
+            <div class="grafico-container">
+                <canvas id="grafico_{{ loop.index }}"></canvas>
+            </div>
+
+            <script>
+                (function() {
+                    var ctx = document.getElementById('grafico_{{ loop.index }}').getContext('2d');
+
+                    var periodos   = {{ datos.periodos | tojson }}.map(String);
+                    var fut_labels = {{ datos.labels_futuros | tojson }};
+                    var all_labels = periodos.concat(fut_labels);
+
+                    var historico  = {{ datos.historico | tojson }};
+                    var proyeccion = {{ datos.proyeccion | tojson }};
+
+                    var data_hist  = historico.concat(new Array(fut_labels.length).fill(null));
+                    var data_proy  = new Array(periodos.length - 1).fill(null)
+                                        .concat([historico[historico.length - 1]])
+                                        .concat(proyeccion);
+
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: all_labels,
+                            datasets: [
+                                {
+                                    label: 'Ventas históricas',
+                                    data: data_hist,
+                                    borderColor: '#4a90d9',
+                                    backgroundColor: 'rgba(74,144,217,0.1)',
+                                    tension: 0.3,
+                                    fill: true,
+                                    pointRadius: 4
+                                },
+                                {
+                                    label: 'Proyección futura',
+                                    data: data_proy,
+                                    borderColor: '#e87d2b',
+                                    backgroundColor: 'rgba(232,125,43,0.1)',
+                                    borderDash: [6, 3],
+                                    tension: 0.3,
+                                    fill: false,
+                                    pointRadius: 4
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: { position: 'top' },
+                                title: {
+                                    display: true,
+                                    text: '{{ producto }} — Serie histórica y proyección'
+                                }
+                            },
+                            scales: {
+                                y: { beginAtZero: false }
+                            }
+                        }
+                    });
+                })();
+            </script>
+
+        {% endfor %}
+
         {% endif %}
 
     </div>
